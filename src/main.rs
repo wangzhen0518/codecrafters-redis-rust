@@ -71,6 +71,17 @@ async fn read_all(stream: &mut TcpStream) -> Vec<u8> {
     full_buffer
 }
 
+fn encode_response_string(response: &[u8]) -> Vec<u8> {
+    [
+        b"$",
+        response.len().to_string().as_bytes(),
+        b"\r\n",
+        response,
+        b"\r\n",
+    ]
+    .concat()
+}
+
 async fn execute_one_command(command_args: Vec<&[u8]>, stream: &mut TcpStream) {
     let command = str::from_utf8(command_args[0])
         .expect("Invalid UTF-8")
@@ -80,6 +91,14 @@ async fn execute_one_command(command_args: Vec<&[u8]>, stream: &mut TcpStream) {
             .write_all(b"+PONG\r\n")
             .await
             .expect("Response PONG Failed"),
+        "echo" => {
+            let response = command_args[1];
+            let encode_resp = encode_response_string(response);
+            stream
+                .write_all(&encode_resp)
+                .await
+                .expect("Response echo failed");
+        }
         "set" => {}
         "get" => {}
         _ => {}
@@ -91,7 +110,7 @@ async fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
         .expect("Failed to bind port 6379");
-    // let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+
     let mut database: HashMap<&str, &[u8]> = HashMap::new();
     loop {
         match listener.accept().await {
