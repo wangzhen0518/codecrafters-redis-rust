@@ -1,10 +1,16 @@
-#![allow(unused_imports)]
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write, sync::Arc};
 
+use lazy_static::lazy_static;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
+    sync::Mutex,
 };
+
+lazy_static! {
+    static ref DATABASE: Arc<Mutex<HashMap<String, Vec<u8>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+}
 
 fn read_number(input: &[u8], start_index: usize) -> (usize, usize) {
     let mut index = start_index;
@@ -71,15 +77,20 @@ async fn read_all(stream: &mut TcpStream) -> Vec<u8> {
     full_buffer
 }
 
-fn encode_response_string(response: &[u8]) -> Vec<u8> {
-    [
-        b"$",
-        response.len().to_string().as_bytes(),
-        b"\r\n",
-        response,
-        b"\r\n",
-    ]
-    .concat()
+fn encode_response_string(response: Option<&[u8]>) -> String {
+    if let Some(response) = response {
+        format!(
+            "${}\r\n{}\r\n",
+            response.len(),
+            str::from_utf8(response).expect("Invalid UTF-8")
+        )
+    } else {
+        "$-1\r\n".to_string()
+    }
+}
+
+fn encode_status_string(status: &str) -> String {
+    format!("+{}\r\n", status)
 }
 
 async fn execute_one_command(command_args: Vec<&[u8]>, stream: &mut TcpStream) {
@@ -88,21 +99,63 @@ async fn execute_one_command(command_args: Vec<&[u8]>, stream: &mut TcpStream) {
         .to_lowercase();
     match command.as_str() {
         "ping" => stream
-            .write_all(b"+PONG\r\n")
+            .write_all(encode_status_string("PONG").as_bytes())
             .await
             .expect("Response PONG Failed"),
         "echo" => {
             let response = command_args[1];
-            let encode_resp = encode_response_string(response);
+            let encode_resp = encode_response_string(Some(response));
             stream
-                .write_all(&encode_resp)
+                .write_all(encode_resp.as_bytes())
                 .await
                 .expect("Response echo failed");
         }
-        "set" => {}
-        "get" => {}
+        "set" => {
+            let key = str::from_utf8(command_args[1]).expect("Invalid UTF-8");
+            let value = command_args[2];
+            DATABASE
+                .lock()
+                .await
+                .insert(key.to_string(), value.to_vec());
+            stream
+                .write_all(encode_status_string("OK").as_bytes())
+                .await
+                .expect("Failed to respond to SET");
+        }
+        "get" => {
+            let key = str::from_utf8(command_args[1]).expect("Invalid UTF-8");
+            let database = DATABASE.lock().await;
+            let value = database.get(key).map(|value| value.as_slice());
+            stream
+                .write_all(encode_response_string(value).as_bytes())
+                .await
+                .expect("Response get failed");
+        }
         _ => {}
     }
+}
+
+async fn handle_connection(mut stream: TcpStream) {
+    println!("accepted new connection");
+    tokio::spawn(async move {
+        let mut input = read_all(&mut stream).await;
+        while !input.is_empty() {
+            println!("{}", "=".repeat(50));
+            let input_str = str::from_utf8(&input).expect("Invalid UTF-8");
+            println!("{}", input_str);
+
+            let char_list: Vec<char> = input.iter().map(|c| char::from(*c)).collect();
+            println!("{:?}", char_list);
+            println!("{}", "=".repeat(50));
+
+            let command_list = parse_input(&input);
+            for command_args in command_list {
+                execute_one_command(command_args, &mut stream).await;
+            }
+
+            input = read_all(&mut stream).await;
+        }
+    });
 }
 
 #[tokio::main]
@@ -111,34 +164,10 @@ async fn main() {
         .await
         .expect("Failed to bind port 6379");
 
-    let mut database: HashMap<&str, &[u8]> = HashMap::new();
     loop {
         match listener.accept().await {
-            Ok((mut stream, _)) => {
-                println!("accepted new connection");
-                tokio::spawn(async move {
-                    let mut input = read_all(&mut stream).await;
-                    while !input.is_empty() {
-                        println!("{}", "=".repeat(50));
-                        let input_str = str::from_utf8(&input).expect("Invalid UTF-8");
-                        println!("{}", input_str);
-
-                        let char_list: Vec<char> = input.iter().map(|c| char::from(*c)).collect();
-                        println!("{:?}", char_list);
-                        println!("{}", "=".repeat(50));
-
-                        let command_list = parse_input(&input);
-                        for command_args in command_list {
-                            execute_one_command(command_args, &mut stream).await;
-                        }
-
-                        input = read_all(&mut stream).await;
-                    }
-                });
-            }
-            Err(e) => {
-                println!("error: {}", e);
-            }
+            Ok((stream, _)) => handle_connection(stream).await,
+            Err(e) => println!("error: {}", e),
         }
     }
 }
