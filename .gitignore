@@ -11,3 +11,5 @@ target/
 *.pdb
 
 *.code-workspace
+
+current_command.sh

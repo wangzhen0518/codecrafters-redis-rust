@@ -5,6 +5,7 @@ use std::{
     io::{Read, Write},
     iter,
     net::{TcpListener, TcpStream},
+    thread,
 };
 
 fn read_number(input: &[u8], start_index: usize) -> (usize, usize) {
@@ -76,41 +77,43 @@ fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
     let mut database: HashMap<&str, &[u8]> = HashMap::new();
     for stream in listener.incoming() {
-        match stream {
-            Ok(mut _stream) => {
-                println!("accepted new connection");
-                // _stream.write_all(b"+PONG\r\n").unwrap();
-                let mut input = read_all(&mut _stream);
-                while !input.is_empty() {
-                    println!("{}", "=".repeat(50));
-                    let input_str = str::from_utf8(&input).expect("Invalid UTF-8");
-                    println!("{}", input_str);
+        thread::spawn(|| {
+            match stream {
+                Ok(mut _stream) => {
+                    println!("accepted new connection");
+                    // _stream.write_all(b"+PONG\r\n").unwrap();
+                    let mut input = read_all(&mut _stream);
+                    while !input.is_empty() {
+                        println!("{}", "=".repeat(50));
+                        let input_str = str::from_utf8(&input).expect("Invalid UTF-8");
+                        println!("{}", input_str);
 
-                    let char_list: Vec<char> = input.iter().map(|c| char::from(*c)).collect();
-                    println!("{:?}", char_list);
-                    println!("{}", "=".repeat(50));
+                        let char_list: Vec<char> = input.iter().map(|c| char::from(*c)).collect();
+                        println!("{:?}", char_list);
+                        println!("{}", "=".repeat(50));
 
-                    let command_list = parse_input(&input);
-                    for command_args in command_list {
-                        let command = str::from_utf8(command_args[0])
-                            .expect("Invalid UTF-8")
-                            .to_lowercase();
-                        match command.as_str() {
-                            "ping" => _stream
-                                .write_all(b"+PONG\r\n")
-                                .expect("Response PONG Failed"),
-                            "set" => {}
-                            "get" => {}
-                            _ => {}
+                        let command_list = parse_input(&input);
+                        for command_args in command_list {
+                            let command = str::from_utf8(command_args[0])
+                                .expect("Invalid UTF-8")
+                                .to_lowercase();
+                            match command.as_str() {
+                                "ping" => _stream
+                                    .write_all(b"+PONG\r\n")
+                                    .expect("Response PONG Failed"),
+                                "set" => {}
+                                "get" => {}
+                                _ => {}
+                            }
                         }
-                    }
 
-                    input = read_all(&mut _stream);
+                        input = read_all(&mut _stream);
+                    }
+                }
+                Err(e) => {
+                    println!("error: {}", e);
                 }
             }
-            Err(e) => {
-                println!("error: {}", e);
-            }
-        }
+        });
     }
 }
