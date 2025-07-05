@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Write, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use lazy_static::lazy_static;
 use tokio::{
@@ -12,15 +12,20 @@ lazy_static! {
         Arc::new(Mutex::new(HashMap::new()));
 }
 
+fn ascii_to_number(ascii_bytes: &[u8]) -> usize {
+    let mut number = 0;
+    for c in ascii_bytes {
+        number = number * 10 + (c - b'0') as usize;
+    }
+    number
+}
+
 fn read_number(input: &[u8], start_index: usize) -> (usize, usize) {
     let mut index = start_index;
     while index < input.len() && input[index] != b'\r' {
         index += 1;
     }
-    let mut number = 0;
-    for c in &input[start_index..index] {
-        number = number * 10 + (c - b'0') as usize;
-    }
+    let number = ascii_to_number(&input[start_index..index]);
     (number, index + 2 - start_index)
 }
 
@@ -93,6 +98,13 @@ fn encode_status_string(status: &str) -> String {
     format!("+{}\r\n", status)
 }
 
+fn expire_key(key: String, time: u64) {
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(time)).await;
+        DATABASE.lock().await.remove(&key);
+    });
+}
+
 async fn execute_one_command(command_args: Vec<&[u8]>, stream: &mut TcpStream) {
     let command = str::from_utf8(command_args[0])
         .expect("Invalid UTF-8")
@@ -111,12 +123,22 @@ async fn execute_one_command(command_args: Vec<&[u8]>, stream: &mut TcpStream) {
                 .expect("Response echo failed");
         }
         "set" => {
-            let key = str::from_utf8(command_args[1]).expect("Invalid UTF-8");
-            let value = command_args[2];
-            DATABASE
-                .lock()
-                .await
-                .insert(key.to_string(), value.to_vec());
+            let key = str::from_utf8(command_args[1])
+                .expect("Invalid UTF-8")
+                .to_string();
+            let value = command_args[2].to_vec();
+            DATABASE.lock().await.insert(key.clone(), value);
+
+            if command_args.len() >= 5 {
+                let ex_command = str::from_utf8(command_args[3])
+                    .expect("Invalid UTF-8")
+                    .to_lowercase();
+                if &ex_command == "px" {
+                    let time = ascii_to_number(command_args[4]);
+                    expire_key(key.clone(), time as u64);
+                }
+            }
+
             stream
                 .write_all(encode_status_string("OK").as_bytes())
                 .await
