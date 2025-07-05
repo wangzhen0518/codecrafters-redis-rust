@@ -1,11 +1,9 @@
 #![allow(unused_imports)]
-use std::{
-    cmp::min,
-    collections::HashMap,
-    io::{Read, Write},
-    iter,
+use std::collections::HashMap;
+
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    thread,
 };
 
 fn read_number(input: &[u8], start_index: usize) -> (usize, usize) {
@@ -61,28 +59,46 @@ fn parse_input(input: &[u8]) -> Vec<Vec<&[u8]>> {
     command_list
 }
 
-fn read_all(stream: &mut TcpStream) -> Vec<u8> {
+async fn read_all(stream: &mut TcpStream) -> Vec<u8> {
     let mut full_buffer = vec![];
     let mut buffer = [0u8; 1024];
-    let mut num = stream.read(&mut buffer).unwrap();
+    let mut num = stream.read(&mut buffer).await.unwrap();
     while num == buffer.len() {
         full_buffer.extend_from_slice(&buffer[..num]);
-        num = stream.read(&mut buffer).unwrap();
+        num = stream.read(&mut buffer).await.unwrap();
     }
     full_buffer.extend_from_slice(&buffer[..num]);
     full_buffer
 }
 
-fn main() {
-    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+async fn execute_one_command(command_args: Vec<&[u8]>, stream: &mut TcpStream) {
+    let command = str::from_utf8(command_args[0])
+        .expect("Invalid UTF-8")
+        .to_lowercase();
+    match command.as_str() {
+        "ping" => stream
+            .write_all(b"+PONG\r\n")
+            .await
+            .expect("Response PONG Failed"),
+        "set" => {}
+        "get" => {}
+        _ => {}
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let listener = TcpListener::bind("127.0.0.1:6379")
+        .await
+        .expect("Failed to bind port 6379");
+    // let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
     let mut database: HashMap<&str, &[u8]> = HashMap::new();
-    for stream in listener.incoming() {
-        thread::spawn(|| {
-            match stream {
-                Ok(mut _stream) => {
-                    println!("accepted new connection");
-                    // _stream.write_all(b"+PONG\r\n").unwrap();
-                    let mut input = read_all(&mut _stream);
+    loop {
+        match listener.accept().await {
+            Ok((mut stream, _)) => {
+                println!("accepted new connection");
+                tokio::spawn(async move {
+                    let mut input = read_all(&mut stream).await;
                     while !input.is_empty() {
                         println!("{}", "=".repeat(50));
                         let input_str = str::from_utf8(&input).expect("Invalid UTF-8");
@@ -94,26 +110,16 @@ fn main() {
 
                         let command_list = parse_input(&input);
                         for command_args in command_list {
-                            let command = str::from_utf8(command_args[0])
-                                .expect("Invalid UTF-8")
-                                .to_lowercase();
-                            match command.as_str() {
-                                "ping" => _stream
-                                    .write_all(b"+PONG\r\n")
-                                    .expect("Response PONG Failed"),
-                                "set" => {}
-                                "get" => {}
-                                _ => {}
-                            }
+                            execute_one_command(command_args, &mut stream).await;
                         }
 
-                        input = read_all(&mut _stream);
+                        input = read_all(&mut stream).await;
                     }
-                }
-                Err(e) => {
-                    println!("error: {}", e);
-                }
+                });
             }
-        });
+            Err(e) => {
+                println!("error: {}", e);
+            }
+        }
     }
 }
