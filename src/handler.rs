@@ -10,6 +10,8 @@ use tokio::{
 pub(crate) struct Info {
     lib_name: String,
     lib_ver: String,
+    dir: String,
+    dbfilename: String,
 }
 
 #[derive(Debug)]
@@ -25,11 +27,16 @@ pub(crate) struct Handler {
 }
 
 impl Handler {
-    pub fn new(lib_name: String, lib_ver: String) -> Arc<Handler> {
+    pub fn new(lib_name: String, lib_ver: String, dir: String, dbfilename: String) -> Arc<Handler> {
         Arc::new(Handler {
             state: Mutex::new(State {
                 id: 0,
-                info: Info { lib_name, lib_ver },
+                info: Info {
+                    lib_name,
+                    lib_ver,
+                    dir,
+                    dbfilename,
+                },
                 db: HashMap::new(),
             }),
         })
@@ -120,6 +127,7 @@ lib-name={} lib-ver={} io-thread=0\n",
                     }
                     "setinfo" => {
                         let mut index = 2;
+                        let mut state = self.state.lock().await;
                         while index < command_args.len() {
                             let attr_name = str::from_utf8(command_args[index])
                                 .expect("Invalid UTF-8")
@@ -127,7 +135,6 @@ lib-name={} lib-ver={} io-thread=0\n",
                             let attr_value = str::from_utf8(command_args[index + 1])
                                 .expect("Invalid UTF-8")
                                 .to_string();
-                            let mut state = self.state.lock().await;
                             match attr_name.as_str() {
                                 "lib-name" => state.info.lib_name = attr_value,
                                 "lib-ver" => state.info.lib_ver = attr_value,
@@ -135,14 +142,49 @@ lib-name={} lib-ver={} io-thread=0\n",
                             }
                             index += 2;
                         }
-
                         encode_status_string("OK").as_bytes().to_vec()
                     }
-                    _ => {
-                        unimplemented!()
-                    }
+                    _ => unimplemented!(),
                 };
-                stream.write_all(&resp).await.expect("Response get failed");
+                let error_info = format!("Response CLIENT {} failed", subcommand);
+                stream.write_all(&resp).await.expect(&error_info);
+            }
+            "config" => {
+                let subcommand = str::from_utf8(command_args[1])
+                    .expect("Invalid UTF-8")
+                    .to_lowercase();
+                let resp = match subcommand.as_str() {
+                    "get" => {
+                        let state = self.state.lock().await;
+                        let mut info_array = vec![];
+                        for arg in &command_args[2..] {
+                            let attr_name =
+                                str::from_utf8(arg).expect("Invalid UTF-8").to_lowercase();
+                            let attr_value = match attr_name.as_str() {
+                                "dir" => &state.info.dir,
+                                "dbfilename" => &state.info.dbfilename,
+                                _ => unimplemented!(),
+                            };
+                            info_array.push(attr_name);
+                            info_array.push(attr_value.clone());
+                        }
+                        // let info_array: Vec<&[u8]> = info_array
+                        //     .iter()
+                        //     .map(|s| s.as_bytes())
+                        //     .collect();
+                        encode_array(
+                            &info_array
+                                .iter()
+                                .map(|s| s.as_bytes())
+                                .collect::<Vec<&[u8]>>(),
+                        )
+                    }
+                    _ => unimplemented!(),
+                };
+                stream
+                    .write_all(&resp)
+                    .await
+                    .expect("Response CONFIG GET failed");
             }
             _ => {}
         }
@@ -268,4 +310,14 @@ fn encode_response_string(response: Option<&[u8]>) -> Vec<u8> {
 
 fn encode_status_string(status: &str) -> String {
     format!("+{}\r\n", status)
+}
+
+fn encode_array(array: &[&[u8]]) -> Vec<u8> {
+    let mut resp = format!("*{}\r\n", array.len()).into_bytes();
+    array.iter().for_each(|item| {
+        resp.extend(format!("${}\r\n", item.len()).into_bytes());
+        resp.extend_from_slice(item);
+        resp.extend(b"\r\n");
+    });
+    resp
 }
