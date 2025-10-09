@@ -13,3 +13,5 @@ target/
 *.code-workspace
 
 current_command.sh
+
+*.rdb

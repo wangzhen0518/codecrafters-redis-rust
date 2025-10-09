@@ -20,9 +20,9 @@ async fn main() {
     utils::config_logger();
 
     let args = Args::parse();
-    let listener = TcpListener::bind("127.0.0.1:6379")
+    let listener = TcpListener::bind("127.0.0.1:6380")
         .await
-        .expect("Failed to bind port 6379");
+        .expect("Failed to bind port 6380");
     let handler = handler::Handler::new(
         "EMPTY_NAME".to_string(),
         "EMPTY_VER".to_string(),
