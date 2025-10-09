@@ -7,7 +7,10 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.98"                                    # error handling
 bytes = "1.10.1"                                     # helps manage buffers
+clap = { version = "4.5.40", features = ["derive"] } # argument parsing
+lazy_static = "1.5.0"                                # for static data
 thiserror = "2.0.12"                                 # error handling
 tokio = { version = "1.46.1", features = ["full"] }  # async networking
-lazy_static = "1.5.0"                                # for static data
-clap = { version = "4.5.40", features = ["derive"] } # argument parsing
+tracing-subscriber = "0.3.20"
+tracing = "0.1.41"
+serde_json = "1.0.145"

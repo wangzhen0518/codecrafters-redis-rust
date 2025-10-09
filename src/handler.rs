@@ -192,20 +192,22 @@ lib-name={} lib-ver={} io-thread=0\n",
 
     pub async fn handle_connection(self: &Arc<Handler>, mut stream: TcpStream, addr: SocketAddr) {
         let handler = self.clone();
-        println!("accepted new connection");
+        tracing::debug!("accepted new connection");
         tokio::spawn(async move {
             handler.state.lock().await.id += 1;
             let mut input = read_all(&mut stream).await;
             while !input.is_empty() {
-                println!("{}", "=".repeat(50));
+                tracing::debug!("{}", "=".repeat(50));
 
                 if let Ok(input_str) = str::from_utf8(&input) {
-                    println!("{}", input_str);
+                    if let Ok(input_str) = serde_json::to_string(input_str) {
+                        tracing::debug!("{}", input_str);
+                    }
                 }
 
                 let char_list: Vec<char> = input.iter().map(|c| char::from(*c)).collect();
-                println!("{:?}", char_list);
-                println!("{}", "=".repeat(50));
+                tracing::debug!("{:?}", char_list);
+                tracing::debug!("{}", "=".repeat(50));
 
                 // let command_list = parse_input(&input);
                 // for command_args in command_list {

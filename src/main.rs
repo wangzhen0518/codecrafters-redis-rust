@@ -2,7 +2,7 @@ use clap::Parser;
 use tokio::net::TcpListener;
 
 pub mod handler;
-use handler::Handler;
+mod utils;
 
 /// Self wrote redis
 #[derive(Debug, Parser)]
@@ -17,11 +17,13 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
+    utils::config_logger();
+
     let args = Args::parse();
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
         .expect("Failed to bind port 6379");
-    let handler = Handler::new(
+    let handler = handler::Handler::new(
         "EMPTY_NAME".to_string(),
         "EMPTY_VER".to_string(),
         args.dir,
