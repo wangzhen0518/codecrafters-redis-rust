@@ -18,7 +18,7 @@ pub(crate) struct Info {
 pub(crate) struct State {
     id: usize,
     info: Info,
-    db: HashMap<String, Vec<u8>>,
+    db: HashMap<Vec<u8>, Vec<u8>>, //TODO 能否减少 Vec 的复制
 }
 
 #[derive(Debug)]
@@ -42,7 +42,7 @@ impl Handler {
         })
     }
 
-    fn expire_key(self: &Arc<Self>, key: String, time: u64) {
+    fn expire_key(self: &Arc<Self>, key: Vec<u8>, time: u64) {
         let handler = self.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(time)).await;
@@ -73,9 +73,7 @@ impl Handler {
                     .expect("Response echo failed");
             }
             "set" => {
-                let key = str::from_utf8(command_args[1])
-                    .expect("Invalid UTF-8")
-                    .to_string();
+                let key = command_args[1].to_vec();
                 let value = command_args[2].to_vec();
                 self.state.lock().await.db.insert(key.clone(), value);
 
@@ -85,7 +83,7 @@ impl Handler {
                         .to_lowercase();
                     if &ex_command == "px" {
                         let time = ascii_to_number(command_args[4]);
-                        self.expire_key(key.clone(), time as u64);
+                        self.expire_key(key, time as u64);
                     }
                 }
 
@@ -95,9 +93,9 @@ impl Handler {
                     .expect("Failed to respond to SET");
             }
             "get" => {
-                let key = str::from_utf8(command_args[1]).expect("Invalid UTF-8");
+                let key = command_args[1].to_vec();
                 let database = &mut self.state.lock().await.db;
-                let value = database.get(key).map(|value| value.as_slice());
+                let value = database.get(&key).map(|value| value.as_slice());
                 stream
                     .write_all(&encode_response_string(value))
                     .await
