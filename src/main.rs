@@ -13,6 +13,12 @@ struct Args {
 
     #[arg(short, long, default_value = "")]
     dbfilename: String,
+
+    #[arg(long, default_value = "127.0.0.1")]
+    bind_source_addr: String,
+
+    #[arg(long, default_value = "6379")]
+    port: u16,
 }
 
 #[tokio::main]
@@ -23,7 +29,7 @@ async fn main() {
     let listener = TcpListener::bind("127.0.0.1:6380")
         .await
         .expect("Failed to bind port 6380");
-    let handler = handler::Handler::new(
+        .unwrap_or_else(|_| panic!("Failed to bind to {}", &server_addr));
         "EMPTY_NAME".to_string(),
         "EMPTY_VER".to_string(),
         args.dir,
