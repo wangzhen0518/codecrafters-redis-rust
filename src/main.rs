@@ -1,17 +1,34 @@
-use clap::Parser;
-use tokio::net::TcpListener;
+#![allow(warnings)]
 
+use std::{
+    fs,
+    net::{SocketAddr, ToSocketAddrs},
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+};
+
+use clap::Parser;
+use tokio::{net::TcpListener, sync::Mutex};
+
+use crate::server::{Connection, Server, handle_connection};
+
+pub mod client;
+mod command;
 pub mod handler;
+mod resp;
+pub mod server;
 mod utils;
 
-/// Self wrote redis
+// pub use resp;
+
 #[derive(Debug, Parser)]
 #[command(version, about, long_about=None)]
 struct Args {
-    #[arg(long, default_value = "")]
+    #[arg(long, default_value = ".")]
     dir: String,
 
-    #[arg(short, long, default_value = "")]
+    #[arg(short, long, default_value = "dump.rdb")]
     dbfilename: String,
 
     #[arg(long, default_value = "127.0.0.1")]
@@ -26,19 +43,49 @@ async fn main() {
     utils::config_logger();
 
     let args = Args::parse();
-    let listener = TcpListener::bind("127.0.0.1:6380")
+
+    // bind tcp address
+    let server_addr =
+        SocketAddr::from_str(format!("{}:{}", args.bind_source_addr, args.port).as_str()).unwrap();
+    let listener = TcpListener::bind(&server_addr)
         .await
-        .expect("Failed to bind port 6380");
         .unwrap_or_else(|_| panic!("Failed to bind to {}", &server_addr));
-        "EMPTY_NAME".to_string(),
-        "EMPTY_VER".to_string(),
-        args.dir,
-        args.dbfilename,
-    );
+
+    // deal rdb file path
+    let mut rdb_filename = PathBuf::from(&args.dir);
+    if !rdb_filename.exists() {
+        fs::create_dir(&rdb_filename)
+            .unwrap_or_else(|_| panic!("Failed to create directory {}", &rdb_filename.display()));
+    } else if !rdb_filename.is_dir() {
+        panic!("Existing {} is not a directory.", &rdb_filename.display());
+    }
+    rdb_filename = fs::canonicalize(&rdb_filename).unwrap();
+    rdb_filename.push(&args.dbfilename);
+
+    // init server
+    let server = Arc::new(Mutex::new(Server::new(server_addr, rdb_filename)));
     loop {
         match listener.accept().await {
-            Ok((stream, addr)) => handler.handle_connection(stream, addr).await,
+            Ok((stream, addr)) => {
+                let mut s = server.lock().await;
+                let conn = Connection::new(s.conn_num, addr, stream);
+                s.conn_num += 1;
+                tokio::spawn(handle_connection(server.clone(), conn));
+            }
             Err(e) => println!("error: {}", e),
         }
     }
+
+    // let handler = handler::Handler::new(
+    //     "EMPTY_NAME".to_string(),
+    //     "EMPTY_VER".to_string(),
+    //     args.dir,
+    //     args.dbfilename,
+    // );
+    // loop {
+    //     match listener.accept().await {
+    //         Ok((stream, addr)) => handler.handle_connection(stream, addr).await,
+    //         Err(e) => println!("error: {}", e),
+    //     }
+    // }
 }

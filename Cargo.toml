@@ -1,16 +1,28 @@
 [package]
 name = "codecrafters-redis"
 version = "0.1.0"
-authors = ["Codecrafters <hello@codecrafters.io>"]
-edition = "2021"
+authors = ["Anon Tokio <anontokio@163.com>"]
+edition = "2024"
+default-run = "codecrafters-redis"
+
+# [profile.release]
+# opt-level = "z"   # 最小体积优化
+# lto = true        # 链接时优化
+# codegen-units = 1 # 单代码生成单元
+# strip = true      # 移除符号信息
+# panic = "abort"   # 使用 abort 而不是展开
 
 [dependencies]
-anyhow = "1.0.98"                                    # error handling
-bytes = "1.10.1"                                     # helps manage buffers
-clap = { version = "4.5.40", features = ["derive"] } # argument parsing
-lazy_static = "1.5.0"                                # for static data
-thiserror = "2.0.12"                                 # error handling
-tokio = { version = "1.46.1", features = ["full"] }  # async networking
-tracing-subscriber = "0.3.20"
-tracing = "0.1.41"
-serde_json = "1.0.145"
+# anyhow = "1.0.102"                                     # error handling
+bytes = "1.11.1"                                       # helps manage buffers
+clap = { version = "4.6.1", features = ["derive"] }    # argument parsing
+lazy_static = "1.5.0"                                  # for static data
+thiserror = "2.0.18"                                   # error handling
+tokio = { version = "1.52.1", features = ["full"] }    # async networking
+tracing-subscriber = "0.3.23"
+tracing = "0.1.44"
+# serde_json = "1.0.149"
+serde = { version = "1.0.228", features = ["derive"] }
+ryu = "1.0.23"
+lexical-core = "1.0.6"
+itoa = "1.0.18"
