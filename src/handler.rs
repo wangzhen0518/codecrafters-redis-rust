@@ -184,7 +184,12 @@ lib-name={} lib-ver={} io-thread=0\n",
                     .await
                     .expect("Response CONFIG GET failed");
             }
-            _ => {}
+            cmd => {
+                stream
+                    .write_all(&encode_response_string(None))
+                    .await
+                    .unwrap_or_else(|_| panic!("Response {} failed", cmd));
+            }
         }
     }
 
