@@ -142,6 +142,12 @@ lib-name={} lib-ver={} io-thread=0\n",
                         }
                         encode_status_string("OK").as_bytes().to_vec()
                     }
+                    "getname" => encode_response_string(Some(
+                        self.state.lock().await.info.lib_name.as_bytes(),
+                    )),
+                    "getredir" => {
+                        encode_response_string(Some(self.state.lock().await.info.dir.as_bytes()))
+                    }
                     _ => unimplemented!(),
                 };
                 let error_info = format!("Response CLIENT {} failed", subcommand);
@@ -292,15 +298,17 @@ async fn read_all(stream: &mut TcpStream) -> Vec<u8> {
 }
 
 fn encode_response_string(response: Option<&[u8]>) -> Vec<u8> {
-    if let Some(response) = response {
-        [
-            b"$",
-            response.len().to_string().as_bytes(),
-            b"\r\n",
-            response,
-            b"\r\n",
-        ]
-        .concat()
+    if let Some(data) = response {
+        let mut itoa_buf = itoa::Buffer::new();
+        let len_str = itoa_buf.format(data.len());
+        let mut buf = Vec::with_capacity(1 + len_str.len() + 2 + data.len() + 2);
+        buf.push(b'$');
+        buf.extend_from_slice(len_str.as_bytes());
+        buf.extend_from_slice(data.len().to_string().as_bytes());
+        buf.extend_from_slice(b"\r\n");
+        buf.extend_from_slice(data);
+        buf.extend_from_slice(b"\r\n");
+        buf
     } else {
         b"$-1\r\n".to_vec()
     }
