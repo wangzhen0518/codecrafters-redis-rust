@@ -203,19 +203,12 @@ lib-name={} lib-ver={} io-thread=0\n",
                 tracing::debug!("{}", "=".repeat(50));
 
                 if let Ok(input_str) = str::from_utf8(&input) {
-                    if let Ok(input_str) = serde_json::to_string(input_str) {
-                        tracing::debug!("{}", input_str);
-                    }
+                    tracing::debug!("{:?}", input_str);
+                } else {
+                    let char_list: Vec<char> = input.iter().map(|c| char::from(*c)).collect();
+                    tracing::debug!("{:?}", char_list);
+                    tracing::debug!("{}", "=".repeat(50));
                 }
-
-                let char_list: Vec<char> = input.iter().map(|c| char::from(*c)).collect();
-                tracing::debug!("{:?}", char_list);
-                tracing::debug!("{}", "=".repeat(50));
-
-                // let command_list = parse_input(&input);
-                // for command_args in command_list {
-                //     execute_one_command(command_args, &mut stream).await;
-                // }
 
                 let (command_args, _) = read_one_command(&input, 0);
                 handler
