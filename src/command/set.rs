@@ -10,6 +10,7 @@ use crate::{
     },
     resp::RespData,
     server::{Connection, Server},
+    utils::BytesInStr,
 };
 
 pub struct Set {
@@ -116,6 +117,11 @@ impl ExecuteCommand for Set {
             .await
             .db
             .insert(self.key.clone(), (self.value.clone(), expire_time));
+        tracing::info!(
+            "Add Key: {}, Value: {}",
+            BytesInStr::from_bytes(&self.key),
+            BytesInStr::from_bytes(&self.value)
+        );
         Ok(RespData::SimpleString("OK".to_string()))
     }
 }
