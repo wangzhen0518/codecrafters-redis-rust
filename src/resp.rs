@@ -8,33 +8,19 @@ const MAX_NUMBER_STR_LEN: usize = lexical_core::BUFFER_SIZE;
 
 #[derive(Debug)]
 pub enum RespData {
-    // #[serde(rename = "_")]
     Null,
-    // #[serde(rename = "#")]
     Boolean(bool),
-    // #[serde(rename = ":")]
     Integer(i64),
-    // #[serde(rename = ",")]
     Double(f64),
-    // #[serde(rename = "(")]
     // BigNumber(),
-    // #[serde(rename = "+")]
     SimpleString(String), //todo 如何采用 &str
-    // #[serde(rename = "-")]
     SimpleError(String), //todo 如何采用 &str
-    // #[serde(rename = "$")]
     BulkString(Option<Bytes>),
-    // #[serde(rename = "!")]
     BulkError(Bytes),
-    // #[serde(rename = "=")]
     // VerbatimString(),
-    // #[serde(rename = "*")]
     Array(Vec<RespData>),
-    // #[serde(rename = "~")]
     // Set(HashSet<RespValue<'a>>),
-    // #[serde(rename = "%")]
     // Map(Map<'a>),
-    // #[serde(rename = ">")]
     // Push(Vec<RespData>),
 }
 
