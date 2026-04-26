@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use thiserror::Error;
 
@@ -20,8 +22,8 @@ pub enum RespData {
     BulkError(Bytes),
     // VerbatimString(),
     Array(Vec<RespData>),
+    Map(HashMap<Bytes, RespData>),
     // Set(HashSet<RespValue<'a>>),
-    // Map(HashMap<RespData, RespData>),
     // Push(Vec<RespData>),
 }
 
@@ -61,6 +63,9 @@ pub enum ParseError {
 
     #[error("Expected an array, but got '{}'", .0)]
     ExpectedArray(u8),
+
+    #[error("Expected map key to be bytes-compatible string.")]
+    ExpectedMapKeyBytes,
 
     #[error("Unknown RESP type prefix: '{}'", .0)]
     UnknownTypePrefix(u8),
@@ -118,7 +123,8 @@ fn expect_array(buffer: &mut BytesMut) -> Result<()> {
 
 fn get_bytes_until_next_sep_pos(buffer: &mut BytesMut) -> Result<(BytesMut, usize)> {
     let pos = buffer
-        .array_windows()
+        // .array_windows()
+        .windows(2)
         .position(|sep| sep == SEP_BYTES)
         .ok_or(ParseError::Eof(Bytes::copy_from_slice(buffer)))?;
     let data = buffer.split_to(pos);
@@ -196,6 +202,25 @@ pub fn parse_array(buffer: &mut BytesMut) -> Result<Vec<RespData>> {
     Ok(array)
 }
 
+pub fn parse_map(buffer: &mut BytesMut) -> Result<HashMap<Bytes, RespData>> {
+    let (data, _) = get_bytes_until_next_sep_pos(buffer)?;
+    let length = lexical_core::parse(&data)?;
+
+    let mut map = HashMap::with_capacity(length);
+    for _ in 0..length {
+        let key = parse_resp(buffer)?;
+        let value = parse_resp(buffer)?;
+        let key = match key {
+            RespData::BulkString(Some(key)) => key,
+            RespData::SimpleString(key) => Bytes::from_owner(key),
+            _ => return Err(ParseError::ExpectedMapKeyBytes),
+        };
+        map.insert(key, value);
+    }
+
+    Ok(map)
+}
+
 #[allow(dead_code)]
 pub fn parse_resp(buffer: &mut BytesMut) -> Result<RespData> {
     match read_u8(buffer)? {
@@ -211,6 +236,7 @@ pub fn parse_resp(buffer: &mut BytesMut) -> Result<RespData> {
         b'$' => Ok(RespData::BulkString(parse_bulk_string(buffer)?)),
         b'!' => Ok(RespData::BulkError(parse_bulk_error(buffer)?)),
         b'*' => Ok(RespData::Array(parse_array(buffer)?)),
+        b'%' => Ok(RespData::Map(parse_map(buffer)?)),
         t => Err(ParseError::UnknownTypePrefix(t)),
     }
 }
@@ -325,6 +351,20 @@ pub fn serialize_array(buffer: &mut BytesMut, array: &[RespData]) {
     }
 }
 
+pub fn serialize_map(buffer: &mut BytesMut, map: &HashMap<Bytes, RespData>) {
+    buffer.put_u8(b'%');
+    lexical_write(map.len(), buffer);
+    buffer.put(SEP_STR.as_bytes());
+
+    let mut entries: Vec<_> = map.iter().collect();
+    entries.sort_by(|(k1, _), (k2, _)| k1.as_ref().cmp(k2.as_ref()));
+
+    for (key, value) in entries {
+        serialize_bulk_string(buffer, &Some(key.clone()));
+        serialize_resp(buffer, value);
+    }
+}
+
 pub fn serialize_resp(buffer: &mut BytesMut, resp: &RespData) {
     match resp {
         RespData::Null => serialize_null(buffer),
@@ -336,11 +376,14 @@ pub fn serialize_resp(buffer: &mut BytesMut, resp: &RespData) {
         RespData::BulkString(bytes) => serialize_bulk_string(buffer, bytes),
         RespData::BulkError(bytes) => serialize_bulk_error(buffer, bytes),
         RespData::Array(array) => serialize_array(buffer, array),
+        RespData::Map(map) => serialize_map(buffer, map),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use bytes::{Bytes, BytesMut};
 
     use crate::resp::ClientRequest;
@@ -441,6 +484,38 @@ mod tests {
     }
 
     #[test]
+    fn parse_resp_should_parse_map() {
+        let resp = parse_resp_from_str("%2\r\n+first\r\n:1\r\n+second\r\n$5\r\nhello\r\n");
+        let expected = HashMap::from([
+            (Bytes::from_owner("first"), RespData::Integer(1)),
+            (
+                Bytes::from_owner("second"),
+                RespData::BulkString(Some(Bytes::from_owner("hello"))),
+            ),
+        ]);
+        assert_eq!(resp, RespData::Map(expected));
+    }
+
+    #[test]
+    fn parse_resp_should_reject_non_string_map_key() {
+        let mut buffer = BytesMut::from("%1\r\n:1\r\n+v\r\n");
+        let result = parse_resp(&mut buffer);
+        assert!(matches!(result, Err(ParseError::ExpectedMapKeyBytes)));
+    }
+
+    #[test]
+    fn parse_resp_map_should_keep_last_for_duplicate_key() {
+        let resp = parse_resp_from_str("%2\r\n+key\r\n:1\r\n+key\r\n:2\r\n");
+        assert_eq!(
+            resp,
+            RespData::Map(HashMap::from([(
+                Bytes::from_owner("key"),
+                RespData::Integer(2),
+            )]))
+        );
+    }
+
+    #[test]
     fn parse_resp_should_report_invalid_boolean() {
         let mut buffer = BytesMut::from("#yes\r\n");
         let result = parse_resp(&mut buffer);
@@ -536,6 +611,25 @@ mod tests {
     }
 
     #[test]
+    fn serialize_resp_should_serialize_map_payload() {
+        let mut buffer = BytesMut::new();
+        serialize_resp(
+            &mut buffer,
+            &RespData::Map(HashMap::from([
+                (Bytes::from_owner("first"), RespData::Integer(1)),
+                (
+                    Bytes::from_owner("second"),
+                    RespData::BulkString(Some(Bytes::from_owner("hello"))),
+                ),
+            ])),
+        );
+        assert_eq!(
+            buffer.as_ref(),
+            b"%2\r\n$5\r\nfirst\r\n:1\r\n$6\r\nsecond\r\n$5\r\nhello\r\n"
+        );
+    }
+
+    #[test]
     fn serialize_and_parse_resp_should_roundtrip() {
         let mut buffer = BytesMut::new();
         let expected = RespData::Array(vec![
@@ -546,6 +640,10 @@ mod tests {
             RespData::BulkString(Some(Bytes::from_owner("hello"))),
             RespData::BulkString(None),
             RespData::BulkError(Bytes::from_owner("error")),
+            RespData::Map(HashMap::from([(
+                Bytes::from_owner("k"),
+                RespData::SimpleString("v".to_string()),
+            )])),
         ]);
         serialize_resp(&mut buffer, &expected);
 
