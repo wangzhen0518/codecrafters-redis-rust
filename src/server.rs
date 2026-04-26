@@ -15,7 +15,7 @@ use crate::{
     utils::BytesInStr,
 };
 
-const BUFFER_INITIAL_SIZE: usize = 0;
+const BUFFER_INITIAL_SIZE: usize = 128;
 
 pub type Key = Bytes;
 pub type Value = Bytes;
@@ -62,6 +62,7 @@ impl Connection {
     }
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 enum Error {
     #[error("Parse RESP failed: {}", .0)]
@@ -72,10 +73,6 @@ enum Error {
 
     #[error("Execute command failed: {}", .0)]
     CommandExecError(#[from] command::ExecError),
-}
-
-async fn read_all(stream: &mut TcpStream, buffer: &mut BytesMut) -> usize {
-    stream.read_buf(buffer).await.unwrap_or_default()
 }
 
 pub async fn handle_connection(server: Arc<Mutex<Server>>, mut conn: Connection) {

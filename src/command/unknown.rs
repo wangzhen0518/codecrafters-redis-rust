@@ -4,7 +4,7 @@ use bytes::Bytes;
 use tokio::sync::Mutex;
 
 use crate::{
-    command::{ExecuteCommand, Parse, ParseResult, check_length_eq, error::ExecResult},
+    command::{ExecuteCommand, Parse, ParseResult, error::ExecResult},
     resp::RespData,
     server::{Connection, Server},
 };
@@ -30,6 +30,9 @@ impl ExecuteCommand for Unknown {
         _server: Arc<Mutex<Server>>,
         _conn: &mut Connection,
     ) -> ExecResult<RespData> {
-        Ok(RespData::SimpleString("OK".to_string()))
+        Ok(RespData::SimpleString(format!(
+            "Unknown command with arguments: {:?}",
+            self.args
+        )))
     }
 }

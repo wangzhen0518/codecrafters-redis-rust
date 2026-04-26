@@ -6,6 +6,7 @@ static SEP_BYTES: &[u8; 2] = b"\r\n";
 const SEP_LEN: usize = SEP_BYTES.len();
 const MAX_NUMBER_STR_LEN: usize = lexical_core::BUFFER_SIZE;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum RespData {
     Null,
@@ -14,7 +15,7 @@ pub enum RespData {
     Double(f64),
     // BigNumber(),
     SimpleString(String), //todo 如何采用 &str
-    SimpleError(String), //todo 如何采用 &str
+    SimpleError(String),  //todo 如何采用 &str
     BulkString(Option<Bytes>),
     BulkError(Bytes),
     // VerbatimString(),
@@ -45,9 +46,6 @@ pub enum ParseError {
 
     #[error("Expected length: {}, but got length: {}, the content is \"{:?}\".", .0, .1, .2)]
     LengthMissMatch(usize, usize, Bytes),
-
-    #[error("Expected as least length: {}, but got length: {}, the content is \"{:?}\".", .0, .1, .2)]
-    LengthNotEnough(usize, usize, Bytes),
 
     #[error("Expected seperater \"{:?}\", but got \"{:?}\".", SEP_STR, .0)]
     ExpectedSep(Bytes), //TODO 使用引用
@@ -153,7 +151,7 @@ pub fn parse_double(buffer: &mut BytesMut) -> Result<f64> {
     Ok(double)
 }
 
-pub fn parse_simple_string<'a>(buffer: &mut BytesMut) -> Result<String> {
+pub fn parse_simple_string(buffer: &mut BytesMut) -> Result<String> {
     let (data, _) = get_bytes_until_next_sep_pos(buffer)?;
     let s = str::from_utf8(&data)?.to_string();
     Ok(s)
@@ -198,6 +196,7 @@ pub fn parse_array(buffer: &mut BytesMut) -> Result<Vec<RespData>> {
     Ok(array)
 }
 
+#[allow(dead_code)]
 pub fn parse_resp(buffer: &mut BytesMut) -> Result<RespData> {
     match read_u8(buffer)? {
         b'_' => {
@@ -329,6 +328,20 @@ pub fn serialize_array(buffer: &mut BytesMut, array: &[RespData]) {
     }
 }
 
+pub fn serialize_resp(buffer: &mut BytesMut, resp: &RespData) {
+    match resp {
+        RespData::Null => serialize_null(buffer),
+        RespData::Boolean(boolean) => serialize_boolean(buffer, *boolean),
+        RespData::Integer(integer) => serialize_integer(buffer, *integer),
+        RespData::Double(double) => serialize_double(buffer, *double),
+        RespData::SimpleString(s) => serialize_simple_string(buffer, s),
+        RespData::SimpleError(s) => serialize_simple_error(buffer, s),
+        RespData::BulkString(bytes) => serialize_bulk_string(buffer, bytes),
+        RespData::BulkError(bytes) => serialize_bulk_error(buffer, bytes),
+        RespData::Array(array) => serialize_array(buffer, array),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ParseError, parse_client_request};
@@ -350,20 +363,5 @@ mod tests {
         assert_eq!(request.command, "ECHO");
         assert_eq!(request.args.len(), 1);
         assert_eq!(request.args[0].as_ref(), b"HELLO");
-    }
-}
-
-const INITIAL_SIZE: usize = 64;
-pub fn serialize_resp(buffer: &mut BytesMut, resp: &RespData) {
-    match resp {
-        RespData::Null => serialize_null(buffer),
-        RespData::Boolean(boolean) => serialize_boolean(buffer, *boolean),
-        RespData::Integer(integer) => serialize_integer(buffer, *integer),
-        RespData::Double(double) => serialize_double(buffer, *double),
-        RespData::SimpleString(s) => serialize_simple_string(buffer, s),
-        RespData::SimpleError(s) => serialize_simple_error(buffer, s),
-        RespData::BulkString(bytes) => serialize_bulk_string(buffer, bytes),
-        RespData::BulkError(bytes) => serialize_bulk_error(buffer, bytes),
-        RespData::Array(array) => serialize_array(buffer, array),
     }
 }

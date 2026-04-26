@@ -5,7 +5,7 @@ use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
     command::{
-        ExecuteCommand, Parse, ParseResult, check_length_eq, check_length_ge,
+        ExecuteCommand, Parse, ParseResult, check_length_ge,
         error::{ExecResult, ParseError},
     },
     resp::RespData,
@@ -25,6 +25,30 @@ pub struct Set {
 }
 impl Parse for Set {
     fn parse(args: &[Bytes]) -> ParseResult<Self> {
+        fn parse_i_to_u64(args: &[Bytes], i: usize) -> ParseResult<u64> {
+            let expire_time = lexical_core::parse(
+                args.get(i + 1)
+                    .ok_or(ParseError::ExpectLengthGe(i + 1, i, args.to_vec()))?,
+            )?;
+            Ok(expire_time)
+        }
+
+        fn check_expire_time_is_none(
+            expire_time: &Option<u64>,
+            new_name: String,
+            new_value: String,
+        ) -> ParseResult<()> {
+            if let Some(expire_time) = expire_time {
+                return Err(ParseError::ValueHasBeenSet {
+                    name: "Expire Time",
+                    value: expire_time.to_string(),
+                    new_name,
+                    new_value,
+                });
+            }
+            Ok(())
+        }
+
         check_length_ge(args, 2)?;
 
         let key = args[0].clone();
@@ -39,53 +63,14 @@ impl Parse for Set {
             let argument = str::from_utf8(&args[i])?.to_uppercase();
             match argument.as_str() {
                 "EX" | "EXAT" => {
-                    let seconds: u64 = lexical_core::parse(
-                        &args.get(i + 1).ok_or(ParseError::ExpectLengthGe(
-                            i + 1,
-                            i,
-                            args.to_vec(),
-                        ))?,
-                    )?;
-                    // str::from_utf8(&args.get(i + 1).ok_or(ParseError::ExpectLengthGe(
-                    //     i + 1,
-                    //     i,
-                    //     args.to_vec(),
-                    // ))?)?
-                    // .parse()?;
-                    if expire_time.is_some() {
-                        return Err(ParseError::ValueHasBeenSet {
-                            name: "Expire Time",
-                            value: expire_time.unwrap().to_string(),
-                            new_name: argument,
-                            new_value: seconds.to_string(),
-                        });
-                    }
+                    let seconds = parse_i_to_u64(args, i)?;
+                    check_expire_time_is_none(&expire_time, argument, seconds.to_string())?;
                     expire_time = Some(seconds * 1000);
                     i += 2;
                 }
                 "PX" | "PXAT" => {
-                    let ms: u64 = lexical_core::parse(
-                        &args.get(i + 1).ok_or(ParseError::ExpectLengthGe(
-                            i + 1,
-                            i,
-                            args.to_vec(),
-                        ))?,
-                    )?;
-                    // let ms: u64 =
-                    //     str::from_utf8(&args.get(i + 1).ok_or(ParseError::ExpectLengthGe(
-                    //         i + 1,
-                    //         i,
-                    //         args.to_vec(),
-                    //     ))?)?
-                    //     .parse()?;
-                    if expire_time.is_some() {
-                        return Err(ParseError::ValueHasBeenSet {
-                            name: "Expire Time",
-                            value: expire_time.unwrap().to_string(),
-                            new_name: argument,
-                            new_value: ms.to_string(),
-                        });
-                    }
+                    let ms = parse_i_to_u64(args, i)?;
+                    check_expire_time_is_none(&expire_time, argument, ms.to_string())?;
                     expire_time = Some(ms);
                     i += 2;
                 }

@@ -1,12 +1,6 @@
-#![allow(warnings)]
+// #![allow(warnings)]
 
-use std::{
-    fs,
-    net::{SocketAddr, ToSocketAddrs},
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-};
+use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc};
 
 use clap::Parser;
 use tokio::{net::TcpListener, sync::Mutex};
@@ -74,17 +68,4 @@ async fn main() {
             Err(e) => println!("error: {}", e),
         }
     }
-
-    // let handler = handler::Handler::new(
-    //     "EMPTY_NAME".to_string(),
-    //     "EMPTY_VER".to_string(),
-    //     args.dir,
-    //     args.dbfilename,
-    // );
-    // loop {
-    //     match listener.accept().await {
-    //         Ok((stream, addr)) => handler.handle_connection(stream, addr).await,
-    //         Err(e) => println!("error: {}", e),
-    //     }
-    // }
 }

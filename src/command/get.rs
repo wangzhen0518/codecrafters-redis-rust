@@ -39,7 +39,7 @@ impl ExecuteCommand for Get {
 
         if expire_time.is_some_and(|t| t <= Instant::now()) {
             // If key does not exist, the function has returned in the previous else
-            let ((value, _)) = db.remove(&self.key).unwrap();
+            let (value, _)  = db.remove(&self.key).unwrap();
             tracing::info!(
                 "Remove Key: {}, Value: {}",
                 BytesInStr::from_bytes(&self.key),

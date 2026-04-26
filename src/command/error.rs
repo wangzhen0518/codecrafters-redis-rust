@@ -37,8 +37,8 @@ pub(super) type ParseResult<T> = std::result::Result<T, ParseError>;
 
 #[derive(Debug, Error)]
 pub enum ExecError {
-    #[error("Failed to obtain database.")]
-    ObtainDbFailed,
+    // #[error("Failed to obtain database.")]
+    // ObtainDbFailed,
 }
 
 pub(super) type ExecResult<T> = std::result::Result<T, ExecError>;
