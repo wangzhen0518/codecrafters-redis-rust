@@ -75,6 +75,9 @@ pub enum ParseError {
 
     #[error("Expected an array, but got '{}'", .0)]
     ExpectedArray(u8),
+
+    #[error("Unknown RESP type prefix: '{}'", .0)]
+    UnknownTypePrefix(u8),
 }
 
 type Result<T> = std::result::Result<T, ParseError>;
@@ -105,7 +108,7 @@ fn expect_sep(buffer: &mut BytesMut) -> Result<()> {
 
 #[inline]
 fn expect_bulk_string(buffer: &mut BytesMut) -> Result<()> {
-    let c = buffer.get_u8();
+    let c = read_u8(buffer)?;
     if c != b'$' {
         return Err(ParseError::ExpectedBulkString(c));
     }
@@ -114,11 +117,17 @@ fn expect_bulk_string(buffer: &mut BytesMut) -> Result<()> {
 
 #[inline]
 fn expect_array(buffer: &mut BytesMut) -> Result<()> {
-    let c = buffer.get_u8();
+    let c = read_u8(buffer)?;
     if c != b'*' {
         return Err(ParseError::ExpectedArray(c));
     }
     Ok(())
+}
+
+#[inline]
+fn read_u8(buffer: &mut BytesMut) -> Result<u8> {
+    check_length(buffer, 1)?;
+    Ok(buffer.get_u8())
 }
 
 pub fn get_bytes_until_next_sep_pos(buffer: &mut BytesMut) -> Result<(BytesMut, usize)> {
@@ -205,7 +214,7 @@ pub fn parse_array(buffer: &mut BytesMut) -> Result<Vec<RespData>> {
 // pub fn parse_map
 
 pub fn parse_resp(buffer: &mut BytesMut) -> Result<RespData> {
-    let resp_data = match buffer.get_u8() {
+    let resp_data = match read_u8(buffer)? {
         b'_' => {
             parse_null(buffer)?;
             RespData::Null
@@ -219,7 +228,7 @@ pub fn parse_resp(buffer: &mut BytesMut) -> Result<RespData> {
         b'!' => RespData::BulkError(parse_bulk_error(buffer)?),
         b'*' => RespData::Array(parse_array(buffer)?),
         // b'>' => RespData::Push(parse_push(buffer)?),
-        _ => unreachable!(),
+        t => return Err(ParseError::UnknownTypePrefix(t)),
     };
     Ok(resp_data)
 }
@@ -336,6 +345,30 @@ pub fn serialize_array(buffer: &mut BytesMut, array: &[RespData]) {
 
     for resp in array {
         serialize_resp(buffer, resp);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ParseError, parse_client_request};
+    use bytes::BytesMut;
+
+    #[test]
+    fn parse_client_request_returns_eof_for_partial_frame() {
+        let mut buffer = BytesMut::from("*2\r\n$4\r\nECHO\r\n$5\r\nHEL");
+        let result = parse_client_request(&mut buffer);
+        assert!(matches!(result, Err(ParseError::Eof(_))));
+    }
+
+    #[test]
+    fn parse_client_request_succeeds_after_more_bytes_arrive() {
+        let mut buffer = BytesMut::from("*2\r\n$4\r\nECHO\r\n$5\r\nHEL");
+        buffer.extend_from_slice(b"LO\r\n");
+
+        let request = parse_client_request(&mut buffer).expect("request should parse");
+        assert_eq!(request.command, "ECHO");
+        assert_eq!(request.args.len(), 1);
+        assert_eq!(request.args[0].as_ref(), b"HELLO");
     }
 }
 

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use bytes::{Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -12,6 +12,7 @@ use tokio::{
 use crate::{
     command::{self, ExecuteCommand, parse_command},
     resp::{self, RespData, parse_client_request, serialize_resp, serialize_simple_error},
+    utils::BytesInStr,
 };
 
 const BUFFER_INITIAL_SIZE: usize = 0;
@@ -74,30 +75,22 @@ enum Error {
 }
 
 async fn read_all(stream: &mut TcpStream, buffer: &mut BytesMut) -> usize {
-    //todo 考虑如何支持流式 parse，不然无法确定 stream 是不是已经收到了 client 发送的全部数据
     stream.read_buf(buffer).await.unwrap_or_default()
-    // .expect("Failed to read from tcp stream")
 }
 
 pub async fn handle_connection(server: Arc<Mutex<Server>>, mut conn: Connection) {
     let mut input_buffer = BytesMut::with_capacity(BUFFER_INITIAL_SIZE);
     let mut output_buffer = BytesMut::with_capacity(BUFFER_INITIAL_SIZE);
 
-    let mut n = read_all(&mut conn.stream, &mut input_buffer).await;
+    while let Ok(n) = conn.stream.read_buf(&mut input_buffer).await
+        && n > 0
+    {
+        tracing::info!("Command: {}", BytesInStr::from_bytes(&input_buffer));
 
-    while !input_buffer.is_empty() {
-        tracing::debug!("{}", "=".repeat(50));
-
-        if let Ok(input_str) = str::from_utf8(&input_buffer) {
-            tracing::debug!("{:?}", input_str);
-        } else {
-            let char_list: Vec<char> = input_buffer.iter().map(|c| char::from(*c)).collect();
-            tracing::debug!("{:?}", char_list);
-        }
-        tracing::debug!("{}", "=".repeat(50));
-
+        // Stream-friendly parse: parse on a snapshot and consume input only after a full frame.
+        let mut parsing_buffer = input_buffer.clone();
         let result: Result<RespData, Error> = async {
-            let request = parse_client_request(&mut input_buffer)?;
+            let request = parse_client_request(&mut parsing_buffer)?;
             let command = parse_command(&request)?;
             let resp = command.execute(server.clone(), &mut conn).await?;
             Ok(resp)
@@ -105,14 +98,17 @@ pub async fn handle_connection(server: Arc<Mutex<Server>>, mut conn: Connection)
         .await;
 
         match result {
+            Err(Error::RespParseError(resp::ParseError::Eof(_))) => continue,
             Ok(resp) => serialize_resp(&mut output_buffer, &resp),
             Err(err) => serialize_simple_error(&mut output_buffer, err.to_string().as_str()),
         }
 
-        conn.stream.write_all_buf(&mut output_buffer).await.ok();
-        // .expect("Failed to write response to tcp stream");
-        input_buffer.clear();
-        n = read_all(&mut conn.stream, &mut input_buffer).await;
+        let consumed = input_buffer.len() - parsing_buffer.len();
+        input_buffer.advance(consumed);
+        if let Err(err) = conn.stream.write_all_buf(&mut output_buffer).await {
+            tracing::error!("Failed to send result to client: {}", err);
+        }
     }
+
     server.lock().await.conn_num -= 1;
 }

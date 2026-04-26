@@ -73,19 +73,20 @@ impl ExecuteCommand for Client {
         match self {
             Client::Info => {
                 let info_content = format!(
-                    "id={} addr={}:{} laddr={}:{} \
-fd=24 name= age=0 idle=0 flags=N db=0 sub=0 psub=0 ssub=0 multi=-1 \
+                    "id={id} addr={conn_ip}:{conn_port} laddr={server_ip}:{server_port} \
+fd=24 name={name} age=0 idle=0 flags=N db=0 sub=0 psub=0 ssub=0 multi=-1 \
 watch=0 qbuf=26 qbuf-free=20448 argv-mem=10 multi-mem=0 rbs=16384 \
 rbp=16384 obl=0 oll=0 omem=0 tot-mem=37786 events=r \
 cmd=client|info user=default redir=-1 resp=2 \
-lib-name={} lib-ver={} io-thread=0\n",
-                    conn.id,
-                    conn.addr.ip(),
-                    conn.addr.port(),
-                    server.addr.ip(),
-                    server.addr.port(),
-                    conn.lib_name,
-                    conn.lib_ver
+lib-name={lib_name} lib-ver={lib_ver} io-thread=0\n",
+                    id = conn.id,
+                    conn_ip = conn.addr.ip(),
+                    conn_port = conn.addr.port(),
+                    server_ip = server.addr.ip(),
+                    server_port = server.addr.port(),
+                    name = conn.name,
+                    lib_name = conn.lib_name,
+                    lib_ver = conn.lib_ver
                 );
                 Ok(RespData::BulkString(Some(Bytes::from_owner(info_content))))
             }

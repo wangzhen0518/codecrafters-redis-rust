@@ -15,6 +15,7 @@ use crate::{
     },
     resp::{ClientRequest, RespData},
     server::{Connection, Server},
+    utils::BytesInStr,
 };
 
 mod client;
@@ -67,7 +68,11 @@ pub fn parse_command(request: &ClientRequest) -> ParseResult<Command> {
         "SET" => Command::Set(Set::parse(&request.args)?),
         "CLIENT" => Command::Client(Client::parse(&request.args)?),
         command => {
-            tracing::debug!("Unknown command: {}", command);
+            tracing::debug!(
+                "Unknown command: `{}`, args: `{:?}`",
+                &command,
+                BytesInStr::from_bytes_array(&request.args)
+            );
             Command::Unknown(Unknown::parse(&request.args)?)
         }
     };
