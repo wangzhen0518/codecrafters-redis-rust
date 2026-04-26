@@ -7,6 +7,7 @@ use crate::{
     command::{ExecuteCommand, Parse, ParseResult, check_length_eq, error::ExecResult},
     resp::RespData,
     server::{Connection, Server},
+    utils::BytesInStr,
 };
 pub struct Get {
     key: Bytes,
@@ -37,7 +38,13 @@ impl ExecuteCommand for Get {
         };
 
         if expire_time.is_some_and(|t| t <= Instant::now()) {
-            db.remove(&self.key);
+            // If key does not exist, the function has returned in the previous else
+            let ((value, _)) = db.remove(&self.key).unwrap();
+            tracing::info!(
+                "Remove Key: {}, Value: {}",
+                BytesInStr::from_bytes(&self.key),
+                BytesInStr::from_bytes(&value)
+            );
             return Ok(RespData::BulkString(None));
         }
 
