@@ -7,7 +7,6 @@ use tokio::{net::TcpListener, sync::Mutex};
 
 use crate::server::{Connection, Server, handle_connection};
 
-pub mod client;
 mod command;
 mod resp;
 pub mod server;

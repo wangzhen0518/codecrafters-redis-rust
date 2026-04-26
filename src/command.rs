@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 use crate::{
     command::{
         client::Client,
+        config::Config,
         echo::Echo,
         error::{ExecResult, ParseResult},
         get::Get,
@@ -19,6 +20,7 @@ use crate::{
 };
 
 mod client;
+mod config;
 mod echo;
 mod error;
 mod get;
@@ -34,6 +36,7 @@ pub enum Command {
     Get(Get),
     Set(Set),
     Client(Client),
+    Config(Config),
     Unknown(Unknown),
 }
 
@@ -67,6 +70,7 @@ pub fn parse_command(request: &ClientRequest) -> ParseResult<Command> {
         "GET" => Command::Get(Get::parse(&request.args)?),
         "SET" => Command::Set(Set::parse(&request.args)?),
         "CLIENT" => Command::Client(Client::parse(&request.args)?),
+        "CONFIG" => Command::Config(Config::parse(&request.args)?),
         command => {
             tracing::debug!(
                 "Unknown command: `{}`, args: `{:?}`",
@@ -100,6 +104,7 @@ impl ExecuteCommand for Command {
             Command::Get(get) => get.execute(server, conn).await,
             Command::Set(set) => set.execute(server, conn).await,
             Command::Client(client) => client.execute(server, conn).await,
+            Command::Config(config) => config.execute(server, conn).await,
             Command::Unknown(unknown) => unknown.execute(server, conn).await,
         }
     }

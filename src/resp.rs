@@ -21,7 +21,7 @@ pub enum RespData {
     // VerbatimString(),
     Array(Vec<RespData>),
     // Set(HashSet<RespValue<'a>>),
-    // Map(Map<'a>),
+    // Map(HashMap<RespData, RespData>),
     // Push(Vec<RespData>),
 }
 

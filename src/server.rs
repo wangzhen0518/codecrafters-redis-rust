@@ -24,7 +24,7 @@ pub type Db = HashMap<Key, DbItem>;
 
 pub struct Server {
     pub addr: SocketAddr,
-    pub rdb_filename: PathBuf,
+    pub rdb_file: PathBuf,
     pub db: Db,
     pub conn_num: u64,
 }
@@ -33,7 +33,7 @@ impl Server {
     pub fn new(addr: SocketAddr, rdb_filename: PathBuf) -> Self {
         Self {
             addr,
-            rdb_filename,
+            rdb_file: rdb_filename,
             db: HashMap::new(),
             conn_num: 0,
         }
