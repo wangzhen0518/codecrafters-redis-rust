@@ -13,6 +13,7 @@ use crate::{
     utils::BytesInStr,
 };
 
+#[derive(Debug, PartialEq)]
 pub struct Set {
     key: Bytes,
     value: Bytes,
@@ -111,4 +112,195 @@ impl ExecuteCommand for Set {
     }
 }
 
-// todo parse
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use tokio::time::Instant;
+
+    use super::Set;
+    use crate::{
+        command::{
+            Command, ExecuteCommand, ParseError, parse_command,
+            test::{build_request, build_server_connection},
+        },
+        resp::RespData,
+    };
+
+    #[test]
+    fn parse_set_should_accept_key_value_only() {
+        let cmd = parse_command(&build_request("SET", &["k", "v"])).expect("parse set");
+        assert_eq!(
+            cmd,
+            Command::Set(Set {
+                key: Bytes::from_owner("k"),
+                value: Bytes::from_owner("v"),
+                expire_time: None,
+            })
+        );
+    }
+
+    #[test]
+    fn parse_set_should_parse_px() {
+        let cmd =
+            parse_command(&build_request("SET", &["k", "v", "PX", "100"])).expect("parse set px");
+        assert_eq!(
+            cmd,
+            Command::Set(Set {
+                key: Bytes::from_owner("k"),
+                value: Bytes::from_owner("v"),
+                expire_time: Some(100),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_set_should_parse_option_case_insensitive() {
+        let cmd = parse_command(&build_request("SET", &["k", "v", "px", "7"]))
+            .expect("parse set lowercase px");
+        assert_eq!(
+            cmd,
+            Command::Set(Set {
+                key: Bytes::from_owner("k"),
+                value: Bytes::from_owner("v"),
+                expire_time: Some(7),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_set_should_parse_ex() {
+        let cmd =
+            parse_command(&build_request("SET", &["k", "v", "EX", "2"])).expect("parse set ex");
+        assert_eq!(
+            cmd,
+            Command::Set(Set {
+                key: Bytes::from_owner("k"),
+                value: Bytes::from_owner("v"),
+                expire_time: Some(2000),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_set_should_parse_pxat() {
+        let cmd = parse_command(&build_request("SET", &["k", "v", "PXAT", "123"]))
+            .expect("parse set pxat");
+        assert_eq!(
+            cmd,
+            Command::Set(Set {
+                key: Bytes::from_owner("k"),
+                value: Bytes::from_owner("v"),
+                expire_time: Some(123),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_set_should_parse_exat() {
+        let cmd =
+            parse_command(&build_request("SET", &["k", "v", "EXAT", "3"])).expect("parse set exat");
+        assert_eq!(
+            cmd,
+            Command::Set(Set {
+                key: Bytes::from_owner("k"),
+                value: Bytes::from_owner("v"),
+                expire_time: Some(3000),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_set_should_reject_too_few_arguments() {
+        let err = parse_command(&build_request("SET", &["k"])).expect_err("set requires 2 args");
+        assert_eq!(
+            err,
+            ParseError::ExpectLengthGe(2, 1, vec![Bytes::from_owner("k")])
+        );
+    }
+
+    #[test]
+    fn parse_set_should_reject_invalid_option() {
+        let err = parse_command(&build_request("SET", &["k", "v", "NX", "1"]))
+            .expect_err("unsupported option");
+        assert_eq!(err, ParseError::InvalidArgument("NX".to_string()));
+    }
+
+    #[test]
+    fn parse_set_should_reject_missing_option_value() {
+        let err = parse_command(&build_request("SET", &["k", "v", "PX"]))
+            .expect_err("missing expire value");
+        assert_eq!(
+            err,
+            ParseError::ExpectLengthGe(
+                3,
+                2,
+                vec![
+                    Bytes::from_owner("k"),
+                    Bytes::from_owner("v"),
+                    Bytes::from_owner("PX"),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn parse_set_should_reject_multiple_expire_options() {
+        let err = parse_command(&build_request("SET", &["k", "v", "PX", "10", "EX", "1"]))
+            .expect_err("expire option duplicated");
+        assert_eq!(
+            err,
+            ParseError::ValueHasBeenSet {
+                name: "Expire Time",
+                value: "10".to_string(),
+                new_name: "EX".to_string(),
+                new_value: "1".to_string(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_set_should_store_value_and_return_ok() {
+        let (server, mut conn) = build_server_connection().await;
+        let cmd = Set {
+            key: Bytes::from_owner("k"),
+            value: Bytes::from_owner("v"),
+            expire_time: None,
+        };
+
+        let resp = cmd
+            .execute(server.clone(), &mut conn)
+            .await
+            .expect("execute set");
+        assert_eq!(resp, RespData::SimpleString("OK".to_string()));
+
+        let db = &server.lock().await.db;
+        assert_eq!(
+            db.get(&Bytes::from_owner("k")),
+            Some(&(Bytes::from_owner("v"), None))
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_set_should_store_expire_time_when_given() {
+        let (server, mut conn) = build_server_connection().await;
+        let cmd = Set {
+            key: Bytes::from_owner("k"),
+            value: Bytes::from_owner("v"),
+            expire_time: Some(1000),
+        };
+
+        let set_resp = cmd
+            .execute(server.clone(), &mut conn)
+            .await
+            .expect("execute set");
+        assert_eq!(set_resp, RespData::SimpleString("OK".to_string()));
+
+        let expire_at = server
+            .lock()
+            .await
+            .db
+            .get(&Bytes::from_owner("k"))
+            .and_then(|(_, expire)| *expire);
+        assert!(expire_at.is_some_and(|t| t > Instant::now()));
+    }
+}

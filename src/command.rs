@@ -30,6 +30,7 @@ mod unknown;
 
 pub use error::{ExecError, ParseError};
 
+#[derive(Debug, PartialEq)]
 pub enum Command {
     Ping(Ping),
     Echo(Echo),
@@ -50,7 +51,11 @@ trait Parse {
 #[inline]
 fn check_length_eq(args: &[Bytes], length: usize) -> ParseResult<()> {
     if args.len() != length {
-        return Err(ParseError::ExpectLengthEq(0, args.len(), args.to_vec()));
+        return Err(ParseError::ExpectLengthEq(
+            length,
+            args.len(),
+            args.to_vec(),
+        ));
     }
     Ok(())
 }
@@ -58,7 +63,11 @@ fn check_length_eq(args: &[Bytes], length: usize) -> ParseResult<()> {
 #[inline]
 fn check_length_ge(args: &[Bytes], length: usize) -> ParseResult<()> {
     if args.len() < length {
-        return Err(ParseError::ExpectLengthGe(0, args.len(), args.to_vec()));
+        return Err(ParseError::ExpectLengthGe(
+            length,
+            args.len(),
+            args.to_vec(),
+        ));
     }
     Ok(())
 }
@@ -107,5 +116,54 @@ impl ExecuteCommand for Command {
             Command::Config(config) => config.execute(server, conn).await,
             Command::Unknown(unknown) => unknown.execute(server, conn).await,
         }
+    }
+}
+
+#[cfg(test)]
+pub(super) mod test {
+    use std::{path::PathBuf, sync::Arc};
+
+    use bytes::Bytes;
+    use tokio::{
+        net::{TcpListener, TcpStream},
+        sync::Mutex,
+    };
+
+    use crate::{
+        resp::ClientRequest,
+        server::{Connection, Server},
+    };
+
+    pub fn build_request(command: &str, args: &[&str]) -> ClientRequest {
+        ClientRequest {
+            command: command.to_string(),
+            args: args
+                .iter()
+                .map(|arg| Bytes::copy_from_slice(arg.as_bytes()))
+                .collect(),
+        }
+    }
+
+    pub async fn build_server_connection() -> (Arc<Mutex<Server>>, Connection) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind local listener");
+        let server_addr = listener.local_addr().expect("listener address");
+        let connect = tokio::spawn(async move {
+            TcpStream::connect(server_addr)
+                .await
+                .expect("connect to local listener")
+        });
+        let (server_stream, client_addr) =
+            listener.accept().await.expect("accept local connection");
+        let _client_stream = connect.await.expect("join connect task");
+
+        (
+            Arc::new(Mutex::new(Server::new(
+                server_addr,
+                PathBuf::from("/tmp/dump.rdb"),
+            ))),
+            Connection::new(1, client_addr, server_stream),
+        )
     }
 }

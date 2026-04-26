@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use std::path::PathBuf;
+use std::{net::SocketAddr, path::PathBuf, str::FromStr};
 
 use bytes::{BufMut, BytesMut};
 
@@ -34,4 +34,6 @@ fn main() {
     dbg!(&buf);
 
     println!("s: {:?}", "123");
+
+    println!("{}", SocketAddr::from_str("123.0.0.1:234").unwrap());
 }

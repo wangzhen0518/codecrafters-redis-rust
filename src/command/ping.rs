@@ -9,6 +9,7 @@ use crate::{
     server::{Connection, Server},
 };
 
+#[derive(Debug, PartialEq)]
 pub struct Ping;
 
 impl Parse for Ping {
@@ -28,5 +29,43 @@ impl ExecuteCommand for Ping {
         _conn: &mut Connection,
     ) -> ExecResult<RespData> {
         Ok(RespData::SimpleString("PONG".to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+
+    use super::Ping;
+    use crate::{
+        command::{
+            Command, ExecuteCommand, ParseError, parse_command,
+            test::{build_request, build_server_connection},
+        },
+        resp::RespData,
+    };
+
+    #[test]
+    fn parse_ping_should_accept_no_arguments() {
+        let cmd = parse_command(&build_request("PING", &[])).expect("parse ping");
+        assert_eq!(cmd, Command::Ping(Ping));
+    }
+
+    #[test]
+    fn parse_ping_should_reject_extra_arguments() {
+        let err = parse_command(&build_request("PING", &["x"]))
+            .expect_err("ping with args should fail");
+        assert_eq!(
+            err,
+            ParseError::ExpectLengthEq(0, 1, vec![Bytes::from_owner("x")])
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_ping_should_return_pong() {
+        let (server, mut conn) = build_server_connection().await;
+        let cmd = Ping;
+        let resp = cmd.execute(server, &mut conn).await.expect("execute ping");
+        assert_eq!(resp, RespData::SimpleString("PONG".to_string()));
     }
 }

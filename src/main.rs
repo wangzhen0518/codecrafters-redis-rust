@@ -12,8 +12,6 @@ mod resp;
 pub mod server;
 mod utils;
 
-// pub use resp;
-
 #[derive(Debug, Parser)]
 #[command(version, about, long_about=None)]
 struct Args {
@@ -26,7 +24,7 @@ struct Args {
     #[arg(long, default_value = "127.0.0.1")]
     bind_source_addr: String,
 
-    #[arg(long, default_value = "6379")]
+    #[arg(short, long, default_value_t = 6379)]
     port: u16,
 }
 

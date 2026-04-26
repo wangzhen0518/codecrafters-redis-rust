@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum ParseError {
     #[error("Not a utf8 str: {}",  .0)]
     Utf8Error(#[from] std::str::Utf8Error),
