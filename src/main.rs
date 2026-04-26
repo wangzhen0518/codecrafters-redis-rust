@@ -15,7 +15,6 @@ use crate::server::{Connection, Server, handle_connection};
 
 pub mod client;
 mod command;
-pub mod handler;
 mod resp;
 pub mod server;
 mod utils;

@@ -43,9 +43,8 @@ pub enum ParseError {
     #[error("Unexpected end. Current buffer content: {:?}", .0)]
     Eof(Bytes),
 
-    #[error("Expected boolean: {}",  .0)]
-    ParseBooleanError(#[from] std::str::ParseBoolError),
-
+    // #[error("Expected boolean: {}",  .0)]
+    // ParseBooleanError(#[from] std::str::ParseBoolError),
     #[error("Not a utf8 str: {}",  .0)]
     Utf8Error(#[from] std::str::Utf8Error),
 
@@ -66,6 +65,9 @@ pub enum ParseError {
 
     #[error("Expected seperater \"{:?}\", but got \"{:?}\".", SEP_STR, .0)]
     ExpectedSep(Bytes), //TODO 使用引用
+
+    #[error("Expected boolean, but got \"{:?}\".", .0)]
+    ExpectedBoolean(Bytes),
 
     #[error("Expected a bulk string, but got '{}'.", .0)]
     ExpectedBulkString(u8),
@@ -89,6 +91,12 @@ fn check_length(buffer: &BytesMut, length: usize) -> Result<()> {
         return Err(ParseError::Eof(Bytes::copy_from_slice(buffer)));
     };
     Ok(())
+}
+
+#[inline]
+fn read_u8(buffer: &mut BytesMut) -> Result<u8> {
+    check_length(buffer, 1)?;
+    Ok(buffer.get_u8())
 }
 
 #[inline]
@@ -124,13 +132,7 @@ fn expect_array(buffer: &mut BytesMut) -> Result<()> {
     Ok(())
 }
 
-#[inline]
-fn read_u8(buffer: &mut BytesMut) -> Result<u8> {
-    check_length(buffer, 1)?;
-    Ok(buffer.get_u8())
-}
-
-pub fn get_bytes_until_next_sep_pos(buffer: &mut BytesMut) -> Result<(BytesMut, usize)> {
+fn get_bytes_until_next_sep_pos(buffer: &mut BytesMut) -> Result<(BytesMut, usize)> {
     let pos = buffer
         .array_windows()
         .position(|sep| sep == SEP_BYTES)
@@ -146,8 +148,11 @@ pub fn parse_null(buffer: &mut BytesMut) -> Result<()> {
 
 pub fn parse_boolean(buffer: &mut BytesMut) -> Result<bool> {
     let (data, _) = get_bytes_until_next_sep_pos(buffer)?;
-    let boolean = str::from_utf8(&data)?.parse()?;
-    Ok(boolean)
+    match data.as_ref() {
+        b"true" => Ok(true),
+        b"false" => Ok(false),
+        _ => Err(ParseError::ExpectedBoolean(Bytes::from_owner(data))),
+    }
 }
 
 pub fn parse_integer(buffer: &mut BytesMut) -> Result<i64> {
@@ -158,7 +163,6 @@ pub fn parse_integer(buffer: &mut BytesMut) -> Result<i64> {
 
 pub fn parse_double(buffer: &mut BytesMut) -> Result<f64> {
     let (data, _) = get_bytes_until_next_sep_pos(buffer)?;
-    // let double = str::from_utf8(&data)?.parse()?;
     let double = lexical_core::parse(&data)?;
     Ok(double)
 }
@@ -178,7 +182,6 @@ pub fn parse_simple_error(buffer: &mut BytesMut) -> Result<String> {
 pub fn parse_bulk_string(buffer: &mut BytesMut) -> Result<Option<Bytes>> {
     let (data, _) = get_bytes_until_next_sep_pos(buffer)?;
     let s_len: i64 = lexical_core::parse(&data)?;
-    //  str::from_utf8(data.as_ref())?.parse::<i64>()?;
     if s_len == -1 {
         Ok(None)
     } else {
@@ -191,7 +194,6 @@ pub fn parse_bulk_string(buffer: &mut BytesMut) -> Result<Option<Bytes>> {
 pub fn parse_bulk_error(buffer: &mut BytesMut) -> Result<Bytes> {
     let (data, _) = get_bytes_until_next_sep_pos(buffer)?;
     let s_len = lexical_core::parse(&data)?;
-    // str::from_utf8(data.as_ref())?.parse::<usize>()?;
     let data = Bytes::from_owner(split_to(buffer, s_len)?);
     expect_sep(buffer)?;
     Ok(data)
@@ -200,7 +202,6 @@ pub fn parse_bulk_error(buffer: &mut BytesMut) -> Result<Bytes> {
 pub fn parse_array(buffer: &mut BytesMut) -> Result<Vec<RespData>> {
     let (data, _) = get_bytes_until_next_sep_pos(buffer)?;
     let length = lexical_core::parse(&data)?;
-    //  str::from_utf8(data.as_ref())?.parse::<usize>()?;
 
     let mut array = Vec::with_capacity(length);
     for _ in 0..length {
@@ -211,26 +212,22 @@ pub fn parse_array(buffer: &mut BytesMut) -> Result<Vec<RespData>> {
     Ok(array)
 }
 
-// pub fn parse_map
-
 pub fn parse_resp(buffer: &mut BytesMut) -> Result<RespData> {
-    let resp_data = match read_u8(buffer)? {
+    match read_u8(buffer)? {
         b'_' => {
             parse_null(buffer)?;
-            RespData::Null
+            Ok(RespData::Null)
         }
-        b'#' => RespData::Boolean(parse_boolean(buffer)?),
-        b':' => RespData::Integer(parse_integer(buffer)?),
-        b',' => RespData::Double(parse_double(buffer)?),
-        b'+' => RespData::SimpleString(parse_simple_string(buffer)?),
-        b'-' => RespData::SimpleError(parse_simple_error(buffer)?),
-        b'$' => RespData::BulkString(parse_bulk_string(buffer)?),
-        b'!' => RespData::BulkError(parse_bulk_error(buffer)?),
-        b'*' => RespData::Array(parse_array(buffer)?),
-        // b'>' => RespData::Push(parse_push(buffer)?),
-        t => return Err(ParseError::UnknownTypePrefix(t)),
-    };
-    Ok(resp_data)
+        b'#' => Ok(RespData::Boolean(parse_boolean(buffer)?)),
+        b':' => Ok(RespData::Integer(parse_integer(buffer)?)),
+        b',' => Ok(RespData::Double(parse_double(buffer)?)),
+        b'+' => Ok(RespData::SimpleString(parse_simple_string(buffer)?)),
+        b'-' => Ok(RespData::SimpleError(parse_simple_error(buffer)?)),
+        b'$' => Ok(RespData::BulkString(parse_bulk_string(buffer)?)),
+        b'!' => Ok(RespData::BulkError(parse_bulk_error(buffer)?)),
+        b'*' => Ok(RespData::Array(parse_array(buffer)?)),
+        t => Err(ParseError::UnknownTypePrefix(t)),
+    }
 }
 
 pub struct ClientRequest {
@@ -242,7 +239,6 @@ pub fn parse_client_request(buffer: &mut BytesMut) -> Result<ClientRequest> {
     expect_array(buffer)?;
     let (data, _) = get_bytes_until_next_sep_pos(buffer)?;
     let length = lexical_core::parse(&data)?;
-    //  str::from_utf8(data.as_ref())?.parse::<usize>()?;
     if length == 0 {
         return Err(ParseError::LengthMissMatch(
             1,
@@ -268,7 +264,6 @@ pub fn parse_client_request(buffer: &mut BytesMut) -> Result<ClientRequest> {
 }
 
 // ======================================== Serialize ========================================
-
 #[inline]
 fn lexical_write<N: lexical_core::ToLexical>(n: N, buffer: &mut BytesMut) {
     let length = buffer.len();
