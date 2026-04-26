@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::path::PathBuf;
 
 use bytes::{BufMut, BytesMut};
@@ -30,4 +32,6 @@ fn main() {
         dbg!(str::from_utf8(new_buf).unwrap());
     }
     dbg!(&buf);
+
+    println!("s: {:?}", "123");
 }

@@ -64,7 +64,7 @@ fn check_length_ge(args: &[Bytes], length: usize) -> ParseResult<()> {
 }
 
 pub fn parse_command(request: &ClientRequest) -> ParseResult<Command> {
-    let command = match request.command.as_str() {
+    let command = match request.command.to_uppercase().as_str() {
         "PING" => Command::Ping(Ping::parse(&request.args)?),
         "ECHO" => Command::Echo(Echo::parse(&request.args)?),
         "GET" => Command::Get(Get::parse(&request.args)?),

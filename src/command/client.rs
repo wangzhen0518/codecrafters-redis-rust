@@ -30,8 +30,8 @@ impl Parse for Client {
     {
         check_length_ge(args, 1)?;
 
-        let subcommand = str::from_utf8(&args[0])?.to_uppercase();
-        match subcommand.as_str() {
+        let subcommand = str::from_utf8(&args[0])?;
+        match subcommand.to_uppercase().as_str() {
             "INFO" => {
                 check_length_eq(args, 1)?;
                 Ok(Client::Info)
@@ -46,7 +46,7 @@ impl Parse for Client {
             }
             "SETINFO" => {
                 check_length_eq(args, 3)?;
-                let attr_name = str::from_utf8(&args[1])?.to_uppercase();
+                let attr_name = str::from_utf8(&args[1])?.to_string();
                 let attr_value = str::from_utf8(&args[2])?.to_string();
                 Ok(Client::SetInfo {
                     attr_name,
@@ -58,7 +58,7 @@ impl Parse for Client {
                 let name = str::from_utf8(&args[1])?.to_string();
                 Ok(Client::SetName(name))
             }
-            _ => Err(ParseError::InvalidArgument(subcommand)),
+            _ => Err(ParseError::InvalidArgument(subcommand.to_string())),
         }
     }
 }
@@ -94,7 +94,7 @@ lib-name={lib_name} lib-ver={lib_ver} io-thread=0\n",
                 attr_name,
                 attr_value,
             } => {
-                match attr_name.as_str() {
+                match attr_name.to_uppercase().as_str() {
                     "LIB-NAME" => conn.lib_name = attr_value.to_string(),
                     "LIB-VER" => conn.lib_ver = attr_value.to_string(),
                     attr_name => {

@@ -60,8 +60,8 @@ impl Parse for Set {
         let mut i = 2;
 
         while i < args.len() {
-            let argument = str::from_utf8(&args[i])?.to_uppercase();
-            match argument.as_str() {
+            let argument = str::from_utf8(&args[i])?.to_string();
+            match argument.to_uppercase().as_str() {
                 "EX" | "EXAT" => {
                     let seconds = parse_i_to_u64(args, i)?;
                     check_expire_time_is_none(&expire_time, argument, seconds.to_string())?;

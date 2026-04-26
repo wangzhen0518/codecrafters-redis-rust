@@ -243,7 +243,7 @@ pub fn parse_client_request(buffer: &mut BytesMut) -> Result<ClientRequest> {
     }
 
     Ok(ClientRequest {
-        command: str::from_utf8(&array[0])?.to_uppercase(),
+        command: str::from_utf8(&array[0])?.to_string(),
         args: array[1..].to_vec(),
     })
 }

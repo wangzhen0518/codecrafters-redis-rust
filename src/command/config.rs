@@ -23,15 +23,15 @@ impl Parse for Config {
     {
         check_length_ge(args, 2)?;
 
-        let subcommand = str::from_utf8(&args[0])?.to_uppercase();
-        match subcommand.as_str() {
+        let subcommand = str::from_utf8(&args[0])?;
+        match subcommand.to_uppercase().as_str() {
             "GET" => Ok(Config::Get(
                 args[1..]
                     .iter()
-                    .map(|bytes| str::from_utf8(bytes).map(|s| s.to_uppercase()))
+                    .map(|bytes| str::from_utf8(bytes).map(|s| s.to_string()))
                     .collect::<Result<_, _>>()?,
             )),
-            _ => Err(ParseError::InvalidArgument(subcommand)),
+            _ => Err(ParseError::InvalidArgument(subcommand.to_string())),
         }
     }
 }
@@ -47,18 +47,18 @@ impl ExecuteCommand for Config {
             Config::Get(params) => {
                 let mut response = Vec::with_capacity(params.len() * 2);
                 for param in params {
-                    match param.as_str() {
+                    match param.to_uppercase().as_str() {
                         "DIR" => {
                             let dir = server.rdb_file.parent().unwrap_or(Path::new(""));
                             response.extend([
-                                RespData::BulkString(Some(Bytes::from(param.clone()))),
+                                RespData::BulkString(Some(Bytes::from(param.to_string()))),
                                 RespData::BulkString(Some(Bytes::from(dir.display().to_string()))),
                             ]);
                         }
                         "DBFILENAME" => {
                             let filename = server.rdb_file.file_name().unwrap_or_default();
                             response.extend([
-                                RespData::BulkString(Some(Bytes::from(param.clone()))),
+                                RespData::BulkString(Some(Bytes::from(param.to_string()))),
                                 RespData::BulkString(Some(Bytes::from(
                                     filename.display().to_string(),
                                 ))),
